@@ -3,20 +3,23 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-st.title('Sistema de Monitoramento de Ações dos EUA')
+# Título principal
+st.title('Sistema de Monitoramento de Ações')
 
+# Menu de navegação na sidebar
+menu = st.sidebar.selectbox("Selecione a Página", ["Ativos S&P 500", "Ativos Ibovespa"])
+
+# Parâmetros de filtragem compartilhados
 st.sidebar.header('Parâmetros de Filtragem')
+liquidez_minima = st.sidebar.number_input('Liquidez Mínima (USD)', value=0, help="Valor mínimo de liquidez diária (USD) nos últimos 2 meses")
+pl_maximo = st.sidebar.number_input('P/L Máximo', value=15, help="Preço/Lucro máximo")
+ev_ebitda_maximo = st.sidebar.number_input('EV/EBITDA Máximo', value=12, help="EV/EBITDA máximo")
+margem_bruta_minima = st.sidebar.number_input('Margem Bruta Mínima (%)', value=40, help="Margem bruta mínima (%)")
+roa_minimo = st.sidebar.number_input('ROA Mínimo (%)', value=5, help="Retorno sobre ativos mínimo (%)")
+rendimento_positivo = st.sidebar.checkbox('Rendimento Positivo nos Últimos 12 Meses', value=True)
+ebit_positivo = st.sidebar.checkbox('EBIT Positivo', value=True)
 
-# Parâmetros de filtragem com descrições
-liquidez_minima = st.sidebar.number_input('Liquidez Mínima (USD)', value=0, help="Valor mínimo de liquidez diária (USD) nos últimos 2 meses, sugerido: 5.000.000")
-pl_maximo = st.sidebar.number_input('P/L Máximo', value=15, help="Filtro para o preço/lucro máximo, sugerido: até 15")
-ev_ebitda_maximo = st.sidebar.number_input('EV/EBITDA Máximo', value=12, help="Filtro para EV/EBITDA máximo, sugerido: até 12")
-margem_bruta_minima = st.sidebar.number_input('Margem Bruta Mínima (%)', value=40, help="Margem bruta mínima para filtrar ações, sugerido: > 40%")
-roa_minimo = st.sidebar.number_input('ROA Mínimo (%)', value=5, help="Retorno sobre ativos mínimo, sugerido: > 5%")
-rendimento_positivo = st.sidebar.checkbox('Rendimento Positivo nos Últimos 12 Meses', value=True, help="Filtrar ações com rendimento positivo nos últimos 12 meses")
-ebit_positivo = st.sidebar.checkbox('EBIT Positivo', value=True, help="Filtrar apenas ações com EBIT positivo")
-
-# Função para obter os tickers da S&P 500
+# Função para obter tickers do S&P 500
 @st.cache_data
 def get_sp500_tickers():
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
@@ -25,8 +28,16 @@ def get_sp500_tickers():
     tickers = df['Symbol'].tolist()
     return tickers
 
-tickers_list = get_sp500_tickers()
+# Função para obter tickers do Ibovespa
+@st.cache_data
+def get_ibovespa_tickers():
+    url = 'https://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/ibovespa-composicao-da-carteira.htm'
+    tables = pd.read_html(url)
+    df = tables[0]
+    tickers = df['Código'].tolist()
+    return tickers
 
+# Função para coletar dados financeiros
 @st.cache_data
 def get_financial_data(tickers):
     financial_data = []
@@ -35,7 +46,7 @@ def get_financial_data(tickers):
             stock = yf.Ticker(ticker)
             info = stock.info
 
-            # Obtendo dados históricos dos últimos dois meses
+            # Dados históricos dos últimos dois meses
             hist = stock.history(period='3mo')
             if not hist.empty:
                 volume_medio_2m = hist['Volume'].mean()
@@ -44,7 +55,7 @@ def get_financial_data(tickers):
             else:
                 liquidez = 0
 
-            # Calculando rendimento dos últimos 12 meses
+            # Rendimento dos últimos 12 meses
             hist_12m = stock.history(period='1y')
             rendimento_12m = ((hist_12m['Close'][-1] - hist_12m['Close'][0]) / hist_12m['Close'][0]) * 100 if not hist_12m.empty else 0
 
@@ -55,8 +66,8 @@ def get_financial_data(tickers):
                 'P/L': info.get('trailingPE'),
                 'EV/EBITDA': info.get('enterpriseToEbitda'),
                 'PSR': info.get('priceToSalesTrailing12Months'),
-                'Margem Bruta': info.get('grossMargins') * 100 if info.get('grossMargins') else 0,  # Convertendo para percentual
-                'ROA': info.get('returnOnAssets') * 100 if info.get('returnOnAssets') else 0,  # Convertendo para percentual
+                'Margem Bruta': info.get('grossMargins') * 100 if info.get('grossMargins') else 0,
+                'ROA': info.get('returnOnAssets') * 100 if info.get('returnOnAssets') else 0,
                 'Rendimento 12M (%)': rendimento_12m
             }
             financial_data.append(data)
@@ -64,10 +75,11 @@ def get_financial_data(tickers):
             continue
     return pd.DataFrame(financial_data)
 
+# Função para filtrar ações
 def filtrar_acoes(df):
     df = df.dropna(subset=['Liquidez', 'EBIT', 'P/L', 'EV/EBITDA', 'PSR', 'Margem Bruta', 'ROA', 'Rendimento 12M (%)'])
 
-    # Aplicando os filtros definidos
+    # Aplicando filtros
     df = df[df['Liquidez'] >= liquidez_minima]
     if ebit_positivo:
         df = df[df['EBIT'] > 0]
@@ -78,20 +90,44 @@ def filtrar_acoes(df):
     if rendimento_positivo:
         df = df[df['Rendimento 12M (%)'] > 0]
 
-    # Ordenando pelo PSR
+    # Ordenação por PSR
     df = df.sort_values(by='PSR')
     return df
 
-if st.button('Executar Análise'):
-    with st.spinner('Coletando dados...'):
-        dados_financeiros = get_financial_data(tickers_list)
+# Página de Ativos do S&P 500
+if menu == "Ativos S&P 500":
+    st.header("Análise de Ações do S&P 500")
+    tickers_list = get_sp500_tickers()
+    
+    if st.button('Executar Análise para S&P 500'):
+        with st.spinner('Coletando dados...'):
+            dados_financeiros = get_financial_data(tickers_list)
 
-    st.success('Dados coletados com sucesso!')
+        st.success('Dados coletados com sucesso!')
 
-    with st.spinner('Aplicando filtros...'):
-        resultado = filtrar_acoes(dados_financeiros)
+        with st.spinner('Aplicando filtros...'):
+            resultado = filtrar_acoes(dados_financeiros)
 
-    st.success('Filtros aplicados!')
+        st.success('Filtros aplicados!')
 
-    st.header('Resultado da Análise')
-    st.dataframe(resultado.reset_index(drop=True))
+        st.header('Resultado da Análise')
+        st.dataframe(resultado.reset_index(drop=True))
+
+# Página de Ativos do Ibovespa
+elif menu == "Ativos Ibovespa":
+    st.header("Análise de Ações do Ibovespa")
+    tickers_list = get_ibovespa_tickers()
+    
+    if st.button('Executar Análise para Ibovespa'):
+        with st.spinner('Coletando dados...'):
+            dados_financeiros = get_financial_data(tickers_list)
+
+        st.success('Dados coletados com sucesso!')
+
+        with st.spinner('Aplicando filtros...'):
+            resultado = filtrar_acoes(dados_financeiros)
+
+        st.success('Filtros aplicados!')
+
+        st.header('Resultado da Análise')
+        st.dataframe(resultado.reset_index(drop=True))
