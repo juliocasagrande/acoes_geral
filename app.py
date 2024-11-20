@@ -31,11 +31,16 @@ def get_sp500_tickers():
 # Função para obter tickers do Ibovespa
 @st.cache_data
 def get_ibovespa_tickers():
-    url = 'https://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/ibovespa-composicao-da-carteira.htm'
-    tables = pd.read_html(url)
-    df = tables[0]
-    tickers = df['Código'].tolist()
-    return tickers
+    file_path = 'AcoesIndices_2024-11-21.csv'  # Caminho do arquivo na raiz do projeto
+    try:
+        # Lendo o arquivo
+        tickers_data = pd.read_csv(file_path, delimiter=';', skiprows=2, encoding='ISO-8859-1')
+        # Extraindo os tickers da coluna "Empresa"
+        tickers_list = tickers_data['Empresa'].tolist()
+        return tickers_list
+    except Exception as e:
+        st.error(f"Erro ao carregar os tickers do Ibovespa: {e}")
+        return []
 
 # Função para coletar dados financeiros
 @st.cache_data
